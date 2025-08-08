@@ -1,7 +1,7 @@
 // Next.js API route — создает (или находит) папку ФИО и открывает
 // резюмируемую сессию загрузки в Google Drive, возвращает uploadUrl и accessToken.
 // ВАЖНО: runtime = nodejs (не edge), чтобы работала google-auth-library.
-
+import { OAuth2Client } from "google-auth-library";
 export const config = {
   api: {
     bodyParser: true,
@@ -32,20 +32,28 @@ function escapeForDriveQuery(str) {
 }
 
 async function getAuthClient() {
-  const json = requireEnv("GOOGLE_SERVICE_ACCOUNT_JSON");
-  const key = JSON.parse(json);
-  const client = new JWT({
-    email: key.client_email,
-    key: key.private_key,
-    scopes: SCOPES,
+  const clientId = requireEnv("GOOGLE_CLIENT_ID");
+  const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
+  const refreshToken = requireEnv("GOOGLE_REFRESH_TOKEN");
+  const client = new OAuth2Client(clientId, clientSecret);
+  
+  client.setCredentials({
+    refresh_token: refreshToken,
+  });
+  // Проверим, что токен живой, и получим свежий access_token
+  const { token: accessToken } = await client.getAccessToken();
+  if (!accessToken) {
+    throw new Error("Failed to retrieve access token.");
+  }
+  // Устанавливаем учетные данные с новым accessToken, чтобы последующие вызовы работали
+  client.setCredentials({
+    ...client.credentials,
+    access_token: accessToken,
   });
   return client;
 }
 
-async function getAccessToken(client) {
-  const { access_token } = await client.authorize();
-  return access_token;
-}
+
 
 async function findOrCreateFioFolder({ token, parentId, fio }) {
   // Ищем папку с точным именем среди детей parentId
@@ -173,7 +181,7 @@ export default async function handler(req, res) {
     }
 
     const auth = await getAuthClient();
-    const token = await getAccessToken(auth);
+    const { token } = await auth.getAccessToken();
 
     // Находим/создаем папку ФИО в выбранном городе
     const fioFolderId = await findOrCreateFioFolder({
@@ -201,4 +209,5 @@ export default async function handler(req, res) {
     console.error(e);
     return res.status(500).json({ error: String(e?.message || e) });
   }
+
 }
