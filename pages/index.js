@@ -48,7 +48,7 @@ export default function Home() {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", uploadUrl, true);
-      // xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+      xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
       xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
       xhr.upload.addEventListener("progress", (evt) => {
@@ -183,3 +183,4 @@ export default function Home() {
   );
 
 }
+
