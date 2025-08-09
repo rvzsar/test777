@@ -56,7 +56,7 @@ async function getAuthClient() {
 
 
 async function findOrCreateFioFolder({ token, parentId, fio }) {
-  // Ищем папку с точным именем среди детей parentId
+  // Ищем папку с точным именем среди parentId
   const query = [
     `name='${escapeForDriveQuery(fio)}'`,
     `mimeType='application/vnd.google-apps.folder'`,
@@ -106,7 +106,7 @@ async function findOrCreateFioFolder({ token, parentId, fio }) {
 }
 
 async function openResumableSession({ token, folderId, fileName, mimeType, size }) {
-  // Инициализация резюмируемой сессии (uploadType=resumable)
+  // резюмируемая сессии (uploadType=resumable)
   const url = `${DRIVE_UPLOAD_API}/files?uploadType=resumable&supportsAllDrives=true`;
   const initRes = await fetch(url, {
     method: "POST",
@@ -119,7 +119,6 @@ async function openResumableSession({ token, folderId, fileName, mimeType, size 
     body: JSON.stringify({
       name: fileName,
       parents: [folderId],
-      // mimeType можно указать и здесь, но Google определит по заголовку загрузки
     }),
   });
 
@@ -158,7 +157,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid payload" });
     }
 
-    // Валидируем ФИО: только буквы и пробелы
+    // ФИО: только буквы и пробелы
     const fioSanitized = sanitizeFio(fio);
     const fioValid = /^[\p{L}\s]+$/u.test(fioSanitized) && fioSanitized.length >= 3;
     if (!fioValid) {
@@ -190,7 +189,7 @@ export default async function handler(req, res) {
       fio: fioSanitized,
     });
 
-    // Открываем сессию резюмируемой загрузки в эту папку
+    // Открываем сессию resume загрузки в эту папку
     const uploadUrl = await openResumableSession({
       token,
       folderId: fioFolderId,
@@ -211,3 +210,4 @@ export default async function handler(req, res) {
   }
 
 }
+
