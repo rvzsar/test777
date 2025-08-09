@@ -141,7 +141,7 @@ export default function Home() {
   return (
     <div className="page">
       <div className="card">
-        <h1>Загрузка видео в Google Drive</h1>
+        <h1>Загрузка видео</h1>
         <form onSubmit={onSubmit} className="form">
           <div className="field">
             <label>ФИО <span className="req">*</span></label>
@@ -224,7 +224,6 @@ export default function Home() {
         <details className="notes">
           <summary>Примечания</summary>
           <ul>
-            <li>Папка с выбранным городом должна существовать в Google Drive (настройки через переменные окружения).</li>
             <li>Если папка с ФИО уже существует — файл будет загружен в неё.</li>
           </ul>
         </details>
@@ -359,3 +358,4 @@ export default function Home() {
     </div>
   );
 }
+
