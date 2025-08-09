@@ -1,18 +1,22 @@
 // Next.js API route — создает (или находит) папку ФИО и открывает
 // резюмируемую сессию загрузки в Google Drive, возвращает uploadUrl и accessToken.
-// ВАЖНО: runtime = nodejs (не edge), чтобы работала google-auth-library.
 import { OAuth2Client } from "google-auth-library";
+
 export const config = {
-  api: {
-    bodyParser: true,
-  },
+  api: { bodyParser: true },
 };
 
-import { JWT } from "google-auth-library";
-
-const SCOPES = ["https://www.googleapis.com/auth/drive"]; // полный доступ для сервисного аккаунта
+const SCOPES = ["https://www.googleapis.com/auth/drive"];
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
+
+const ALLOWED_SUBJECTS = new Set([
+  "Микробиология",
+  "Анатомия",
+  "Русский Язык",
+  "Химия",
+  "Биология",
+]);
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -21,42 +25,40 @@ function requireEnv(name) {
 }
 
 function sanitizeFio(raw) {
-  // Разрешаем только буквы (латиница/кириллица) и пробелы. Убираем двойные пробелы и крайние.
   const onlyLettersAndSpaces = raw.replace(/[^\p{L}\s]+/gu, "");
   return onlyLettersAndSpaces.trim().replace(/\s{2,}/g, " ");
 }
 
 function escapeForDriveQuery(str) {
-  // Экранируем одинарные кавычки для q выражений
   return str.replace(/'/g, "\\'");
+}
+
+function sanitizeForFilenamePart(s) {
+  // убираем запрещенные в именах символы и приводим пробелы к одному пробелу
+  return s.replace(/[\\/:*?"<>|]+/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
+function formatDateLabel(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
 }
 
 async function getAuthClient() {
   const clientId = requireEnv("GOOGLE_CLIENT_ID");
   const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
   const refreshToken = requireEnv("GOOGLE_REFRESH_TOKEN");
+
   const client = new OAuth2Client(clientId, clientSecret);
-  
-  client.setCredentials({
-    refresh_token: refreshToken,
-  });
-  // Проверим, что токен живой, и получим свежий access_token
+  client.setCredentials({ refresh_token: refreshToken });
+
   const { token: accessToken } = await client.getAccessToken();
-  if (!accessToken) {
-    throw new Error("Failed to retrieve access token.");
-  }
-  // Устанавливаем учетные данные с новым accessToken, чтобы последующие вызовы работали
-  client.setCredentials({
-    ...client.credentials,
-    access_token: accessToken,
-  });
+  if (!accessToken) throw new Error("Failed to retrieve access token.");
+
+  client.setCredentials({ ...client.credentials, access_token: accessToken });
   return client;
 }
 
-
-
 async function findOrCreateFioFolder({ token, parentId, fio }) {
-  // Ищем папку с точным именем среди parentId
   const query = [
     `name='${escapeForDriveQuery(fio)}'`,
     `mimeType='application/vnd.google-apps.folder'`,
@@ -64,13 +66,8 @@ async function findOrCreateFioFolder({ token, parentId, fio }) {
     "trashed=false",
   ].join(" and ");
 
-  const searchUrl = `${DRIVE_API}/files?q=${encodeURIComponent(
-    query
-  )}&fields=files(id,name)&supportsAllDrives=true`;
-
-  const searchRes = await fetch(searchUrl, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const searchUrl = `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id,name)&supportsAllDrives=true`;
+  const searchRes = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
 
   if (!searchRes.ok) {
     const text = await searchRes.text();
@@ -79,10 +76,9 @@ async function findOrCreateFioFolder({ token, parentId, fio }) {
 
   const data = await searchRes.json();
   if (data.files && data.files.length > 0) {
-    return data.files[0].id; // берем первую папку с таким именем
+    return data.files[0].id;
   }
 
-  // Создаем папку
   const createRes = await fetch(`${DRIVE_API}/files?supportsAllDrives=true`, {
     method: "POST",
     headers: {
@@ -105,8 +101,7 @@ async function findOrCreateFioFolder({ token, parentId, fio }) {
   return created.id;
 }
 
-async function openResumableSession({ token, folderId, fileName, mimeType, size }) {
-  // резюмируемая сессии (uploadType=resumable)
+async function openResumableSession({ token, folderId, finalName, mimeType, size, appProps }) {
   const url = `${DRIVE_UPLOAD_API}/files?uploadType=resumable&supportsAllDrives=true`;
   const initRes = await fetch(url, {
     method: "POST",
@@ -117,8 +112,9 @@ async function openResumableSession({ token, folderId, fileName, mimeType, size 
       "X-Upload-Content-Length": String(size || 0),
     },
     body: JSON.stringify({
-      name: fileName,
+      name: finalName,            // <-- задаем итоговое имя файла
       parents: [folderId],
+      appProperties: appProps,    // метаданные (удобно для будущего поиска/фильтрации)
     }),
   });
 
@@ -142,6 +138,7 @@ export default async function handler(req, res) {
     const {
       fio,
       city, // 'samara' | 'saratov'
+      subject, // новый обязательный параметр
       fileName,
       mimeType,
       size,
@@ -150,6 +147,7 @@ export default async function handler(req, res) {
     if (
       typeof fio !== "string" ||
       typeof city !== "string" ||
+      typeof subject !== "string" ||
       typeof fileName !== "string" ||
       (mimeType && typeof mimeType !== "string") ||
       (size && typeof size !== "number")
@@ -164,6 +162,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "ФИО должно содержать только буквы и пробелы" });
     }
 
+    // Проверка предмета
+    const subjectTrimmed = subject.trim();
+    if (!ALLOWED_SUBJECTS.has(subjectTrimmed)) {
+      return res.status(400).json({ error: "Неверно указан предмет" });
+    }
+
     // Город -> ID папки
     const cityMap = {
       samara: requireEnv("GOOGLE_DRIVE_SAMARA_ID"),
@@ -174,7 +178,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Неизвестный город" });
     }
 
-    // Проверяем тип файла на стороне сервера (минимально)
+    // Минимальная проверка файла
     if (!mimeType || !mimeType.startsWith("video/")) {
       return res.status(400).json({ error: "Разрешены только видеофайлы" });
     }
@@ -189,25 +193,40 @@ export default async function handler(req, res) {
       fio: fioSanitized,
     });
 
-    // Открываем сессию resume загрузки в эту папку
+    // Формируем итоговое имя: ФИО_Предмет_дата_загрузки.ext
+    const ext = fileName && fileName.includes(".")
+      ? fileName.slice(fileName.lastIndexOf("."))
+      : "";
+    const subjectForName = sanitizeForFilenamePart(subjectTrimmed).replace(/\s+/g, "_");
+    const finalName = `${sanitizeForFilenamePart(fioSanitized)}_${subjectForName}_${formatDateLabel()}${ext}`;
+
+    // Метаданные для удобства поиска в будущем
+    const appProps = {
+      fio: fioSanitized,
+      subject: subjectTrimmed,
+      city: city.toLowerCase(),
+      uploadedAt: new Date().toISOString(),
+      source: "nextjs-uploader",
+    };
+
+    // Открываем сессию резюмируемой загрузки
     const uploadUrl = await openResumableSession({
       token,
       folderId: fioFolderId,
-      fileName,
+      finalName,
       mimeType,
       size,
+      appProps,
     });
 
-    // Возвращаем URL и временный токен (для Authorization во время загрузки)
     return res.status(200).json({
       uploadUrl,
       accessToken: token,
       fioFolderId,
+      finalName, // можно вернуть для логов/подтверждения на клиенте
     });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: String(e?.message || e) });
   }
-
 }
-
