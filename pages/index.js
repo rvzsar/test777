@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { Analytics } from "@vercel/analytics/next";
+
 
 const SUBJECTS = [
   "Микробиология",
@@ -358,4 +360,5 @@ export default function Home() {
     </div>
   );
 }
+
 
