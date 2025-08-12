@@ -167,6 +167,10 @@ export default function Home() {
               >
                 <option value="samara">Самара</option>
                 <option value="saratov">Саратов</option>
+                {/* --- новые города --- */}
+                <option value="moscow">Москва</option>
+                <option value="spb">Санкт-Петербург</option>
+                 {/* --- новые города --- */}
               </select>
             </div>
 
@@ -359,6 +363,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
