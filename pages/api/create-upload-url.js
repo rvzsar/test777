@@ -172,6 +172,8 @@ export default async function handler(req, res) {
     const cityMap = {
       samara: requireEnv("GOOGLE_DRIVE_SAMARA_ID"),
       saratov: requireEnv("GOOGLE_DRIVE_SARATOV_ID"),
+      moscow: requireEnv("GOOGLE_DRIVE_MOSCOW_ID"),
+      spb: requireEnv("GOOGLE_DRIVE_SPB_ID"),
     };
     const parentId = cityMap[city.toLowerCase()];
     if (!parentId) {
@@ -230,3 +232,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: String(e?.message || e) });
   }
 }
+
