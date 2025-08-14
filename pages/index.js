@@ -159,7 +159,7 @@ export default function Home() {
 
           <div className="grid">
             <div className="field">
-              <label>Город</label>
+              <label>Выберите город поступления</label>
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
@@ -205,7 +205,7 @@ export default function Home() {
 
           {finalNamePreview && (
             <div className="preview">
-              <div className="preview-title">Имя файла на диске:</div>
+              <div className="preview-title">Имя файла:</div>
               <div className="preview-name">{finalNamePreview}</div>
             </div>
           )}
@@ -363,6 +363,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
