@@ -8,9 +8,24 @@ const SUBJECTS = [
   "Биология",
 ];
 
+// Правила загрузки (структурированные для удобной проверки)
+const UPLOAD_RULES = {
+  "2025-07-14": { subjects: ["Микробиология", "Биология"], type: "договорам об образовании" },
+  "2025-07-16": { subjects: ["Анатомия", "Химия"], type: "договорам об образовании" },
+  "2025-07-18": { subjects: ["Русский Язык"], type: "договорам об образовании" },
+  "2025-07-21": { subjects: ["Микробиология", "Биология"], type: "бюджетные места" },
+  "2025-07-22": { subjects: ["Анатомия", "Химия"], type: "бюджетные места" },
+  "2025-07-23": { subjects: ["Русский Язык"], type: "бюджетные места" },
+  "2025-08-13": { subjects: ["Микробиология", "Биология"], type: "договорам об образовании" },
+  "2025-08-15": { subjects: ["Анатомия", "Химия"], type: "договорам об образовании" },
+  "2025-08-18": { subjects: ["Русский Язык"], type: "договорам об образовании" },
+};
+const DEADLINE_HOUR = 18; // 18:00 МСК
+const MSK_TIMEZONE = "Europe/Moscow"; // Для точного времени в МСК (UTC+3)
+
 export default function Home() {
   const [fio, setFio] = useState("");
-  const [city, setCity] = useState(""); // ИЗМЕНЕНИЕ: Пустая строка по умолчанию, чтобы заставить выбрать
+  const [city, setCity] = useState("");
   const [subject, setSubject] = useState("");
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("");
@@ -104,7 +119,7 @@ export default function Home() {
       setStatus("Ошибка: ФИО должно содержать только буквы и пробелы");
       return;
     }
-    if (!city) { // ИЗМЕНЕНИЕ: Явная проверка на выбор города
+    if (!city) {
       setStatus("Ошибка: выберите город");
       return;
     }
@@ -116,6 +131,29 @@ export default function Home() {
       setStatus("Выберите видеофайл");
       return;
     }
+
+    // ИЗМЕНЕНИЕ: Проверка правил загрузки
+    const now = new Date();
+    const mskDate = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: MSK_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(now).split(', ')[0]; // Формат "DD.MM.YYYY"
+    const currentDate = `${mskDate.split('.')[2]}-${mskDate.split('.')[1]}-${mskDate.split('.')[0]}`; // "YYYY-MM-DD"
+    const currentHour = now.toLocaleString('ru-RU', { timeZone: MSK_TIMEZONE, hour: 'numeric' });
+
+    const rule = UPLOAD_RULES[currentDate];
+    if (!rule || !rule.subjects.includes(subject) || parseInt(currentHour) >= DEADLINE_HOUR) {
+      setStatus(
+        "Загрузка недоступна: Проверьте дату, время и предмет. Загрузка разрешена только в указанные даты до 18:00 МСК. Подробные правила ниже."
+      );
+      return;
+    }
+
     setIsUploading(true);
     try {
       setStatus("Создаем папку и сессию загрузки...");
@@ -150,13 +188,13 @@ export default function Home() {
           </div>
           <div className="grid">
             <div className="field">
-              <label>Выберите город поступления <span className="req">*</span></label> {/* ИЗМЕНЕНИЕ: Добавили * для обязательности */}
+              <label>Выберите город поступления <span className="req">*</span></label>
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 required
               >
-                <option value="" disabled>Выберите город</option> {/* ИЗМЕНЕНИЕ: Первый disabled option для принуждения выбора */}
+                <option value="" disabled>Выберите город</option>
                 <option value="samara">Самара</option>
                 <option value="saratov">Саратов</option>
                 {/* --- новые города --- */}
@@ -198,7 +236,7 @@ export default function Home() {
               <div className="preview-name">{finalNamePreview}</div>
             </div>
           )}
-          <button type="submit" className="btn" disabled={isUploading || !file || !subject || !city}> {/* ИЗМЕНЕНИЕ: Добавили !city в disabled */}
+          <button type="submit" className="btn" disabled={isUploading || !file || !subject || !city}>
             {isUploading ? "Загружаем..." : "Загрузить видео"}
           </button>
         </form>
@@ -215,6 +253,29 @@ export default function Home() {
           <summary>Примечания</summary>
           <ul>
             <li>Если папка с ФИО уже существует — файл будет загружен в неё.</li>
+          </ul>
+        </details>
+        {/* ИЗМЕНЕНИЕ: Добавлен раздел с полным текстом правил */}
+        <details className="rules">
+          <summary>Правила загрузки видео (обязательно ознакомьтесь)</summary>
+          <p>После прохождения тестирования аудио-видеозапись прохождения Вами вступительного испытания необходимо разместить на облачном хранилище файлов (https://vidarch.vercel.app/) до 18:00 МСК, в следующие даты:</p>
+          <p><strong>Июль: на места по договорам об образовании -</strong></p>
+          <ul>
+            <li>14 июля 2025 года - микробиология, биология;</li>
+            <li>16 июля 2025 года - анатомия, химия;</li>
+            <li>18 июля 2025 года - русский язык.</li>
+          </ul>
+          <p><strong>Июль: на бюджетные места -</strong></p>
+          <ul>
+            <li>21 июля 2025 года - микробиология, биология;</li>
+            <li>22 июля 2025 года - анатомия, химия;</li>
+            <li>23 июля 2025 года - русский язык.</li>
+          </ul>
+          <p><strong>Август: на места по договорам об образовании -</strong></p>
+          <ul>
+            <li>13 августа 2025 года - микробиология, биология;</li>
+            <li>15 августа 2025 - анатомия, химия;</li>
+            <li>18 августа 2025 года - русский язык.</li>
           </ul>
         </details>
       </div>
@@ -338,11 +399,20 @@ export default function Home() {
           width: 0%;
           transition: width .2s;
         }
-        .notes {
+        .notes, .rules {
           margin-top: 18px;
           color: #374151;
         }
         summary { cursor: pointer; }
+        /* ИЗМЕНЕНИЕ: Стили для правил (чтобы выделить) */
+        .rules {
+          border-top: 1px solid #e5e7eb;
+          padding-top: 12px;
+        }
+        .rules p, .rules ul {
+          font-size: 14px;
+          line-height: 1.5;
+        }
       `}</style>
     </div>
   );
