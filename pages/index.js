@@ -101,7 +101,7 @@ export default function Home() {
       };
       xhr.onerror = () => {
         // Иногда Google после успешной загрузки триггерит onerror из-за CORS на финальном ответе
-        if (xhr.status === 200 || xhr.status === 0) {
+        if (xhr.status === 200) {
           resolve({ status: "Uploaded (inferred from onerror)" });
         } else {
           reject(new Error(`Network error during upload. Status: ${xhr.status}`));
@@ -417,3 +417,4 @@ export default function Home() {
     </div>
   );
 }
+
