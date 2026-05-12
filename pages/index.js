@@ -79,13 +79,12 @@ export default function Home() {
     return res.json();
   }
 
-  function uploadWithXHR(uploadUrl, accessToken, file) {
+  function uploadWithXHR(uploadUrl, file) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", uploadUrl, true);
-      xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-      // Не ставим Content-Type вручную — пусть браузер решит. Если будет проблема — раскомментить строку ниже:
-      // xhr.setRequestHeader("Content-Type", file.type);
+      // Resumable upload URL уже содержит авторизацию, не нужен отдельный токен
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
       xhr.upload.addEventListener("progress", (evt) => {
         if (evt.lengthComputable) {
           const pct = Math.round((evt.loaded / evt.total) * 100);
@@ -157,9 +156,9 @@ export default function Home() {
     setIsUploading(true);
     try {
       setStatus("Создаем папку и сессию загрузки...");
-      const { uploadUrl, accessToken } = await createSession();
+      const { uploadUrl } = await createSession();
       setStatus("Загружаем видео в Google Drive...");
-      await uploadWithXHR(uploadUrl, accessToken, file);
+      await uploadWithXHR(uploadUrl, file);
       setStatus("Готово! Видео загружено.");
     } catch (err) {
       console.error(err);

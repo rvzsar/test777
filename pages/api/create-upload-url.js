@@ -18,6 +18,72 @@ const ALLOWED_SUBJECTS = new Set([
   "Биология",
 ]);
 
+// Правила загрузки (серверная валидация)
+const UPLOAD_RULES = {
+  "2025-07-14": { subjects: ["Микробиология", "Биология"] },
+  "2025-07-16": { subjects: ["Анатомия", "Химия"] },
+  "2025-07-18": { subjects: ["Русский Язык"] },
+  "2025-07-21": { subjects: ["Микробиология", "Биология"] },
+  "2025-07-22": { subjects: ["Анатомия", "Химия"] },
+  "2025-07-23": { subjects: ["Русский Язык"] },
+  "2025-08-13": { subjects: ["Микробиология", "Биология"] },
+  "2025-08-15": { subjects: ["Анатомия", "Химия"] },
+  "2025-08-18": { subjects: ["Русский Язык"] },
+};
+const DEADLINE_HOUR = 18;
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3
+
+// Rate limiting (простая in-memory реализация)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 минута
+const RATE_LIMIT_MAX_REQUESTS = 5; // максимум 5 запросов в минуту
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { windowStart: now, count: 1 });
+    return true;
+  }
+  
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  
+  entry.count++;
+  return true;
+}
+
+function getMskDate() {
+  const now = new Date();
+  const mskTime = new Date(now.getTime() + MSK_OFFSET_MS + now.getTimezoneOffset() * 60 * 1000);
+  const year = mskTime.getFullYear();
+  const month = String(mskTime.getMonth() + 1).padStart(2, "0");
+  const day = String(mskTime.getDate()).padStart(2, "0");
+  const hour = mskTime.getHours();
+  return { date: `${year}-${month}-${day}`, hour };
+}
+
+function validateUploadSchedule(subject) {
+  const { date, hour } = getMskDate();
+  const rule = UPLOAD_RULES[date];
+  
+  if (!rule) {
+    return { allowed: false, reason: "Загрузка недоступна в эту дату" };
+  }
+  
+  if (hour >= DEADLINE_HOUR) {
+    return { allowed: false, reason: "Время загрузки истекло (до 18:00 МСК)" };
+  }
+  
+  if (!rule.subjects.includes(subject)) {
+    return { allowed: false, reason: `Предмет "${subject}" недоступен для загрузки сегодня` };
+  }
+  
+  return { allowed: true };
+}
+
 function requireEnv(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env var: ${name}`);
@@ -135,6 +201,37 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
+    // Rate limiting
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || 
+               req.headers["x-real-ip"] || 
+               req.socket?.remoteAddress || 
+               "unknown";
+    
+    if (!checkRateLimit(ip)) {
+      return res.status(429).json({ 
+        error: "Слишком много запросов. Пожалуйста, подождите минуту." 
+      });
+    }
+
+    // Проверка Origin/Referer для защиты от CSRF
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const host = req.headers.host;
+    
+    // В production проверяем, что запрос пришел с нашего домена
+    if (process.env.NODE_ENV === "production") {
+      const allowedOrigins = [
+        `https://${host}`,
+        process.env.ALLOWED_ORIGIN, // опционально можно задать в env
+      ].filter(Boolean);
+      
+      const requestOrigin = origin || (referer ? new URL(referer).origin : null);
+      
+      if (!requestOrigin || !allowedOrigins.some(o => requestOrigin.startsWith(o.replace(/\/$/, "")))) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
     const {
       fio,
       city, // 'samara' | 'saratov'
@@ -166,6 +263,12 @@ export default async function handler(req, res) {
     const subjectTrimmed = subject.trim();
     if (!ALLOWED_SUBJECTS.has(subjectTrimmed)) {
       return res.status(400).json({ error: "Неверно указан предмет" });
+    }
+
+    // Серверная проверка расписания загрузки
+    const scheduleCheck = validateUploadSchedule(subjectTrimmed);
+    if (!scheduleCheck.allowed) {
+      return res.status(403).json({ error: scheduleCheck.reason });
     }
 
     // Город -> ID папки
@@ -221,9 +324,11 @@ export default async function handler(req, res) {
       appProps,
     });
 
+    // БЕЗОПАСНОСТЬ: НЕ возвращаем accessToken клиенту напрямую
+    // Вместо этого возвращаем только uploadUrl (который уже содержит временную авторизацию)
+    // Google resumable upload URL уже включает upload_id и не требует отдельного токена
     return res.status(200).json({
       uploadUrl,
-      accessToken: token,
       fioFolderId,
       finalName, // можно вернуть для логов/подтверждения на клиенте
     });
